@@ -3,17 +3,17 @@ output:
   pdf_document: default
   html_document: default
 ---
+
 <!-- https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD -->
 
 # Producing Reproducible Rmd Document Analyzing NYPD Shooting Incident Data (Historical)
 
-According to Data.Gov, this is a:
->List of every shooting incident that occurred in NYC going back to 2006 through the end of the previous calendar year.
+According to Data.Gov, this is a: \>List of every shooting incident that occurred in NYC going back to 2006 through the end of the previous calendar year.
 
 > [...] breakdown of every shooting incident that occurred in NYC going back to 2006 through the end of the previous calendar year. This data is manually extracted every quarter and reviewed by the Office of Management Analysis and Planning before being posted on the NYPD website. Each record represents a shooting incident in NYC and includes information about the event, the location and time of occurrence. In addition, information related to suspect and victim demographics is also included. This data can be used by the public to explore the nature of shooting/criminal activity. Please refer to the attached data footnotes for additional information about this dataset.
 
+## Libraries Used
 
-## Libaries Used
 ```{r  message=FALSE}
 library(readr)
 library(reshape)
@@ -23,6 +23,7 @@ library(lubridate)
 
 
 ```
+
 ## Reading in CSV data from City of New York
 
 ```{r reading in data}
@@ -32,33 +33,39 @@ historical_data <- read_csv(file_source)
 
 ### Summary of Data
 
-There are 25596 rows and 19 columns. Many of the columns will not be used in the visualization and analysis so I will later remove them from the data frame. 
-``` {r summary}
+There are 25596 rows and 19 columns. Many of the columns will not be used in the visualization and analysis so I will later remove them from the data frame.
+
+```{r summary}
 summary(historical_data)
 ```
 
 ## Removing columns that we aren't using
 
-For further visualization and analysis I will be keeping OCCUR_DATE and BORO. The type of OCCUR_DATE is currently <chr> so before any visualizations I will mutate it to a data object first using lubridate. 
-``` {r tidying}
+For further visualization and analysis I will be keeping OCCUR_DATE and BORO. The type of OCCUR_DATE is currently <chr> so before any visualizations I will mutate it to a data object first using lubridate.
+
+```{r tidying}
 historical_data_by_location <- subset(historical_data, select=-c(INCIDENT_KEY, JURISDICTION_CODE, LOCATION_DESC, Lon_Lat, X_COORD_CD, Y_COORD_CD, Longitude, Latitude, VIC_RACE, VIC_SEX, VIC_AGE_GROUP, PERP_RACE, PERP_SEX, PERP_AGE_GROUP, STATISTICAL_MURDER_FLAG, PRECINCT, OCCUR_TIME)) 
 
 historical_data_by_location <- historical_data_by_location %>% mutate(OCCUR_DATE = mdy(OCCUR_DATE))
 ```
-I will then aggregate the data, or counting each instances of each shooting group by OCCUR_DATE and BORO. My hope is to get the count of shootings each borough has on a particular day. 
+
+I will then aggregate the data, or counting each instances of each shooting group by OCCUR_DATE and BORO. My hope is to get the count of shootings each borough has on a particular day.
+
 ```{r counting}
 count <- historical_data_by_location %>%  count(OCCUR_DATE, BORO)
 ```
 
 ## Plotting count of shootings by date and by borough
-``` {r scatter plot}
+
+```{r scatter plot}
 ggplot(count, aes(x = OCCUR_DATE, y = n, color = BORO)) +geom_point(size=1)
 ```
-According to the scatter plot above, a majority of boroughs have shooting count of five or less on a given day. Also with a cursory glance, it appears boroughs like Queens and Manhattan have fewer shootings than the other boroughs. 
 
+According to the scatter plot above, a majority of boroughs have shooting count of five or less on a given day. Also with a cursory glance, it appears boroughs like Queens and Manhattan have fewer shootings than the other boroughs.
 
 ## Creating Pie Chart of Perpetrator Age Groups of the shootings
-``` {r pie}
+
+```{r pie}
 historical_data_by_person_demo <- subset(historical_data, select=-c(INCIDENT_KEY, JURISDICTION_CODE, LOCATION_DESC, Lon_Lat, X_COORD_CD, Y_COORD_CD, Longitude, Latitude, STATISTICAL_MURDER_FLAG, PRECINCT, OCCUR_TIME, OCCUR_DATE)) 
 
 historical_data_by_person_demo_count <- historical_data_by_person_demo %>%  count(PERP_AGE_GROUP)
@@ -67,20 +74,53 @@ ggplot(historical_data_by_person_demo_count, aes(x = "", y = n , fill = PERP_AGE
   geom_col() +
   coord_polar(theta = "y")
 ```
-The above pie charts shows the distributions of PERP_AGE_GROUP. I kept the unknown or NA records because the data would be inappropriately portray as a result of removing these records. The largest two age groups are 18-24 and 25-44, meaning these two age groups are the majority of perpetrator. 
+
+The above pie charts shows the distributions of PERP_AGE_GROUP. I kept the unknown or NA records because the data would be inappropriately portray as a result of removing these records. The largest two age groups are 18-24 and 25-44, meaning these two age groups are the majority of perpetrator.
 
 ## Creating Pie Chart of Victims Age Groups of the shootings
 
-``` {r pie vic}
+```{r pie vic}
 historical_data_by_person_demo_count <- historical_data_by_person_demo %>%  count(VIC_AGE_GROUP)
 ggplot(historical_data_by_person_demo_count, aes(x = "", y = n , fill = VIC_AGE_GROUP)) +
   geom_col() +
   coord_polar(theta = "y")
 ```
 
-The above pie charts shows the distributions of VIC_AGE_GROUP. The largest two age groups are 18-24 and 25-44, meaning these two age groups were the majority of shooting victims. 
+The above pie charts shows the distributions of VIC_AGE_GROUP. The largest two age groups are 18-24 and 25-44, meaning these two age groups were the majority of shooting victims.
+
+## Modeling the Data
+
+A linear regression model will be created trained on the existing data sets we have to predict the victims age.
+
+```{r linear model}
+
+historical_data_by_person_demo[is.na(historical_data_by_person_demo) | historical_data_by_person_demo == "Inf"] <- NA
+na.omit(historical_data_by_person_demo)
+
+historical_data_by_person_demo <- na.omit(historical_data_by_person_demo)
+
+historical_data_by_person_demo$BORO.f <- factor(historical_data_by_person_demo$BORO)
+historical_data_by_person_demo$PERP_AGE_GROUP.f <- factor(historical_data_by_person_demo$PERP_AGE_GROUP)
+historical_data_by_person_demo$PERP_SEX.f <- factor(historical_data_by_person_demo$PERP_SEX)
+historical_data_by_person_demo$PERP_RACE.f <- factor(historical_data_by_person_demo$PERP_RACE)
+historical_data_by_person_demo$VIC_AGE_GROUP.f <- factor(historical_data_by_person_demo$VIC_AGE_GROUP)
+
+
+
+
+model <- lm(VIC_AGE_GROUP.f ~ BORO.f + PERP_AGE_GROUP.f + PERP_SEX.f + PERP_RACE.f , data = historical_data_by_person_demo)
+
+x_grid <- seq(1, 6)
+new_df <- tibble(PERP_AGE_GROUP.f = x_grid)
+
+historical_data_by_person_demo_count_pred <- historical_data_by_person_demo %>% mutate(pred = predict(model))
+
+historical_data_by_person_demo_count_pred %>% ggplot() +
+  geom_point(aes(x=PERP_AGE_GROUP, y = VIC_AGE_GROUP), color="blue") +
+  geom_point(aes(x=PERP_AGE_GROUP, y = pred), color="red")
+
+```
 
 ## Possible Questions
 
 Given my brief analysis, I would want to further research the shooting count relative to the population of each borough. Similarly, I would also further see the population density of each age group and compare it to the PERP_AGE_GROUP and VIC_AGE_GROUP distribution.
-
